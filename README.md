@@ -4,18 +4,22 @@ Point CodeCompass at a public GitHub repository or a `.zip` of a project. It ind
 then answers questions in plain English with citations to exact files and lines
 (`path:start-end`). Click a citation to see the code with those lines highlighted.
 
-<!-- AUTHOR: one or two sentences in your own words on why you built this and who it is for. -->
+<!-- DRAFT built from the project records (discovery, research, plan, this run). Rewrite in your own words before submitting. -->
+I built CodeCompass for the NewPage AI FDE assignment. Of the four options, I chose the code
+documentation assistant because it is closest to forward-deployed work (landing in a codebase you
+did not write and needing answers quickly), and because reviewers can test it on any public
+repository, not only on my sample data. It is for developers onboarding onto an unfamiliar codebase.
 
 ## Demo video
 
-[![CodeCompass demo video (4:55): click to play](docs/screenshots/video-thumbnail.png)](docs/videos/codecompass-demo.webm)
+[![CodeCompass demo video (4:55): click to play](docs/screenshots/video-thumbnail.png)](docs/videos/codecompass-demo.mp4)
 
-▶ **[Watch the demo (4 min 55 s, WebM)](docs/videos/codecompass-demo.webm)**: the running stack,
+▶ **[Watch the demo (4 min 55 s, MP4)](docs/videos/codecompass-demo.mp4)**: the running stack,
 cited answers and follow-ups on the indexed demo repository, guardrails declining off-topic
 questions, Langfuse traces, and the pgvector data in pgAdmin.
 
 <!-- VIDEO: GitHub only shows an inline player for videos uploaded through its editor. To get one,
-     edit this README on github.com, drag docs/videos/codecompass-demo.webm onto this section, and
+     edit this README on github.com, drag docs/videos/codecompass-demo.mp4 onto this section, and
      replace the thumbnail link above with the https://github.com/user-attachments/assets/... URL
      GitHub inserts (on its own line). -->
 
@@ -65,11 +69,10 @@ Measured on the author's machine:
 
 | Step | Time |
 |---|---|
-| One-time image download (`make pull`) | <!-- AUTHOR/T150: fill from the timed run --> |
-| `docker compose up --build`, first run (includes building the app image) | <!-- T150 --> |
-| From `up` to the first cited answer | <!-- T150 --> |
 | Indexing the demo repo (236 files, 1,150 chunks; local CPU embeddings, 4-core laptop) | 17 min |
 | First token of an answer (3 sample questions) | about 6 s |
+
+Cold-start times (first image download and first build) were not measured on a clean machine.
 
 ### Get a free Gemini key
 
@@ -167,8 +170,40 @@ where each citation points at the chunk it came from.
 | Evaluation | Versioned question set; custom retrieval and citation metrics plus RAGAS faithfulness | R11 |
 | Ingestion execution | In-process async task with atomic switch-over, instead of a separate queue and worker | R14 |
 
-<!-- AUTHOR: why these choices, in your own words (chunking, embeddings, retrieval, prompts,
-     guardrails, quality, observability). The table above and research.md have the facts. -->
+### Why these choices
+
+<!-- DRAFT built from the project records (discovery, research, plan, this run). Rewrite in your own words before submitting. -->
+
+- **Chunking.** Citations are only useful if they point at exact lines, so chunks had to keep
+  their line spans. LangChain's code splitters do not, so I parse with tree-sitter and still emit
+  LangChain `Document`s. Python, JavaScript and TypeScript get structure-aware chunks; everything
+  else falls back to headings or line windows. I accepted that trade-off and say so up front.
+- **Embeddings.** I started with Gemini embeddings. During the end-to-end run the free-tier quota
+  ran out mid-ingestion, so I moved embeddings to a local Ollama model (`nomic-embed-text`,
+  768 dimensions, so no migration was needed). On a laptop CPU that was too slow at full length,
+  so chunks are embedded from their first 512 tokens; full-text and symbol search still see the
+  whole chunk. The model is one config value, so a hosted model can come back without code changes.
+- **Retrieval.** Code questions mix meaning ("how does login work?") with exact names
+  (`get_password_hash`). Vector search alone misses the names, so retrieval is hybrid: vector,
+  full-text and symbol lookup, fused with Reciprocal Rank Fusion. The fusion is about 20 lines of
+  our own code because LangChain moved `EnsembleRetriever` to its legacy package. A reranker is
+  left as an option for when eval hit-rate falls below 80%, to protect latency.
+- **Storage.** One Postgres with pgvector: vectors, the full-text index and metadata change in one
+  transaction, which is what makes the atomic re-index switch-over simple. One less service for a
+  reviewer to run.
+- **Prompts and grounding.** The rule is "grounded answers or no answer". If retrieval finds
+  nothing, the app returns a fixed "couldn't find" answer without calling the model. Every citation
+  is checked against the retrieved chunks, and an answer without a valid one is marked Unverified.
+- **Guardrails.** Secrets are the main risk in code, so they are redacted at ingestion, before
+  storage or embedding. NeMo Guardrails handles off-topic and jailbreak attempts, and comments in
+  code are treated as untrusted data. PII rails (Presidio) were left out because the spaCy model
+  makes the image heavier and secrets are the stated risk.
+- **Observability and quality.** Langfuse instead of a local trace table, because it brings
+  datasets, prompt versioning and experiment comparison as well as traces. RAGAS is used for
+  faithfulness but kept in a separate eval image, because it roughly doubles the app image.
+- **LLM access.** LiteLLM behind one `ModelFactory`, for provider portability and retries with
+  backoff on free-tier limits. This paid off during the run: switching chat models and moving
+  embeddings to Ollama were configuration changes.
 
 ## Main technology
 
@@ -214,14 +249,15 @@ scripted fake model, so they run offline. One test, `test_sc004_no_planted_secre
 ingests a repository full of fake secrets with a model that tries to echo them, and checks that no
 secret reaches the browser, the database, the prompts, the code viewer or Langfuse.
 
-**Eval results** *(filled after the author verifies the question set and runs `make eval`)*:
+**Eval results:** not run yet. The question set's expected files still need to be checked against
+the pinned commit before the numbers mean anything. The targets are:
 
-| Metric | Value | Target |
-|---|---|---|
-| Retrieval hit-rate | <!-- T148 --> | ≥ 0.80 |
-| Citation validity | <!-- T148 --> | 1.00 |
-| RAGAS faithfulness | <!-- T148 --> | tracked |
-| First-token latency p50 | <!-- T148 --> | ≤ 3 s |
+| Metric | Target |
+|---|---|
+| Retrieval hit-rate | ≥ 0.80 |
+| Citation validity | 1.00 |
+| RAGAS faithfulness | tracked |
+| First-token latency p50 | ≤ 3 s (about 6 s observed, see [Known limitations](#known-limitations)) |
 
 The question set is [`eval/datasets/fastapi-template-v1.yaml`](eval/datasets/fastapi-template-v1.yaml):
 12 questions on `fastapi/full-stack-fastapi-template` at a pinned commit.
@@ -285,7 +321,19 @@ Factual mapping of each component; the trade-off discussion is the author's.
 | Ollama on CPU for embeddings | A managed embedding API (Vertex AI, Bedrock, Azure OpenAI) or Ollama on GPU nodes; ingestion workers embed in parallel |
 | Single user, no auth | SSO (OIDC) and per-tenant data isolation |
 
-<!-- AUTHOR: what you would change first for production, and why. -->
+**What I would change first**
+
+<!-- DRAFT built from the project records (discovery, research, plan, this run). Rewrite in your own words before submitting. -->
+
+1. **Ingestion out of the web process.** Move it to a queue with workers and use GPU or managed
+   embeddings. Indexing the demo repository took 17 minutes on CPU, and an app restart currently
+   loses an in-progress run.
+2. **Authentication and tenant isolation.** Today it is single-user with no auth, which is fine for
+   a review but not for customer code.
+3. **A LiteLLM proxy as the gateway,** for per-team keys, budgets, model fallbacks and spend
+   tracking, instead of a key in an environment file.
+4. **Latency.** Run the input guardrail in parallel with rewrite and retrieval instead of before
+   them, to bring the first token from about 6 s towards the 3 s target.
 
 ## Scope and future work
 
@@ -317,7 +365,7 @@ discovery → specify → clarify → plan → tasks → analyze → implement
 | Tasks | [`tasks.md`](specs/001-code-assistant/tasks.md) | Dependency-ordered tasks, each tied to requirement IDs, grouped by user story |
 | Analyze | `/speckit-analyze` | Cross-checks spec, plan and tasks for gaps and contradictions before implementation |
 
-**Rules and checks used with the AI coding assistant**
+**Rules and checks defined for the AI coding assistant**
 
 - [`CLAUDE.md`](CLAUDE.md) sets the working rules: implement only tasks listed in `tasks.md`;
   propose a spec or plan change first if something is missing; never edit `spec.md` or the
@@ -326,15 +374,66 @@ discovery → specify → clarify → plan → tasks → analyze → implement
 - **Tests are named after requirements** (`test_fr002_safe_extract.py`,
   `test_sc004_no_planted_secret_reaches_any_output`), so each requirement can be traced to the
   test that proves it.
-- **Independent spec review:** a `spec-reviewer` subagent ([`.claude/agents/spec-reviewer.md`](.claude/agents/spec-reviewer.md))
-  re-reads the spec, runs the tests itself and returns `VERDICT: PASS | FAIL` with a
-  requirement-by-requirement coverage list. A task is ticked only after a PASS.
-- **Cross-model review:** [`scripts/cross-review.py`](scripts/cross-review.py) has a different model
-  (Gemini) review code written by Claude ("no model grades its own homework"); each finding is
-  addressed or explicitly dismissed before a user story is committed.
-- Commit messages reference requirement IDs.
+- **Independent spec review:** the workflow defines a `spec-reviewer` subagent
+  ([`.claude/agents/spec-reviewer.md`](.claude/agents/spec-reviewer.md)) that re-reads the spec,
+  runs the tests itself and returns `VERDICT: PASS | FAIL` with a requirement-by-requirement
+  coverage list, as the gate for ticking a task.
+- **Cross-model review:** the workflow also provides
+  [`scripts/cross-review.py`](scripts/cross-review.py), which has a different model (Gemini)
+  review code written by Claude ("no model grades its own homework").
 
-<!-- AUTHOR: how you used AI tools, how you kept their output to your standard, what made it
-     repeatable, and your do's and don'ts. -->
+**Where the process stands:** the foundation tasks (T001–T029) are ticked in
+[`tasks.md`](specs/001-code-assistant/tasks.md) and committed together. The user-story code (T030 onward) is
+implemented and was verified end to end on the demo repository (see [Screenshots](#screenshots)),
+but has not yet been through the `spec-reviewer` and cross-review gates, so those tasks are still
+unticked.
 
-<!-- AUTHOR: what you would do with more time. -->
+### How I used AI
+
+<!-- DRAFT built from the project records (discovery, research, plan, this run). Rewrite in your own words before submitting. -->
+
+I used Claude Code as the coding assistant, inside the Spec Kit workflow above. The AI drafted
+the discovery notes, spec, plan and tasks; I reviewed them and made the calls that are recorded as
+author decisions (for example, hand-rolled fusion instead of a legacy LangChain class, and keeping
+RAGAS out of the app image).
+
+How I kept the output to my standard:
+
+- **Rules in the repo, not in my head.** `CLAUDE.md` and the constitution are checked in, so every
+  session starts from the same rules: only tasks from `tasks.md`, no unexplained dependencies, no
+  hard-coded keys or model names, and no editing the spec without my approval.
+- **Tests tied to requirements,** so "done" means a named test passes, not that the AI says so.
+- **Reviewers that are not the author:** a spec-reviewer subagent and a Gemini cross-review script.
+  As noted above, the user-story tasks have not been through these gates yet.
+- **Running the real app,** not just tests. The end-to-end run surfaced issues the tests did not:
+  the configured Gemini models rejected the `temperature` parameter (the health check only tested
+  embeddings, so it looked fine), and the embedding quota ran out. Each fix went through the rules:
+  the Ollama dependency got its line in `plan.md` before it was added.
+
+What makes it repeatable: the spec artifacts, `CLAUDE.md`, the reviewer agent and the Spec Kit
+commands are all in the repository, so another engineer or another AI session can pick up from
+`tasks.md`.
+
+Do's and don'ts:
+
+- Do write the spec and the rules first; the AI follows written rules far better than chat.
+- Do make the AI run things and show real output instead of claiming success.
+- Do run the actual product end to end; tests with fake models will not catch provider changes.
+- Don't let the AI pick dependencies or change the spec on its own.
+- Don't let the AI write the reasoning you will be judged on.
+
+### With more time
+
+<!-- DRAFT built from the project records (discovery, research, plan, this run). Rewrite in your own words before submitting. -->
+
+- Put the user-story tasks through the spec-reviewer and cross-review gates, and commit them
+  per task.
+- Check the eval set against the pinned commit, run `make eval`, and calibrate
+  `RETRIEVAL_MIN_SCORE` from the results.
+- Stop sending `temperature` to models that reject it, so newer Gemini models work, and make the
+  health check test the chat model too.
+- Add the input guardrail as its own Langfuse span, record the trace input, and make grouped
+  citations clickable.
+- Cut first-token latency, and add a reranker if hit-rate is below target.
+- Resumable re-indexing, and the optional upgrades in the plan: LiteLLM proxy, PII rails, and an
+  agent for multi-step questions.
