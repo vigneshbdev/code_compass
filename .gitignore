@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+
+# Node
+node_modules/
+frontend/dist/
+coverage/
+*.log
+
+# Eval output (selected reports are committed explicitly with `git add -f`)
+eval/reports/*
+!eval/reports/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+.vscode/
+.idea/
