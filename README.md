@@ -8,13 +8,16 @@ then answers questions in plain English with citations to exact files and lines
 
 ## Demo video
 
-<!-- VIDEO: GitHub renders an inline player for an uploaded .mp4/.mov (max 100 MB on free plans).
-     Edit this README on github.com, drag the video file onto the line below, and GitHub inserts a
-     https://github.com/user-attachments/assets/... URL on its own line. Replace the line below with it.
-     For a longer video, use a YouTube/Loom thumbnail link instead:
-     [![CodeCompass demo](docs/screenshots/video-thumbnail.png)](https://www.youtube.com/watch?v=VIDEO_ID) -->
+[![CodeCompass demo video (4:55): click to play](docs/screenshots/video-thumbnail.png)](docs/videos/codecompass-demo.webm)
 
-*Video coming soon.*
+▶ **[Watch the demo (4 min 55 s, WebM)](docs/videos/codecompass-demo.webm)**: the running stack,
+cited answers and follow-ups on the indexed demo repository, guardrails declining off-topic
+questions, Langfuse traces, and the pgvector data in pgAdmin.
+
+<!-- VIDEO: GitHub only shows an inline player for videos uploaded through its editor. To get one,
+     edit this README on github.com, drag docs/videos/codecompass-demo.webm onto this section, and
+     replace the thumbnail link above with the https://github.com/user-attachments/assets/... URL
+     GitHub inserts (on its own line). -->
 
 ## Screenshots
 
@@ -258,9 +261,9 @@ Measured or observed during the end-to-end run:
   `gemini-3.5-flash`.
 - **The startup health check tests the embedding model only.** With local embeddings, a missing
   or invalid Gemini key is not reported at startup; it appears as an error on the first question.
-- **Langfuse traces are incomplete.** A trace currently shows the retrieval and answer spans; the
-  input guardrail and follow-up rewrite do not appear as separate spans, and the trace's input
-  field is empty.
+- **Langfuse traces are incomplete.** A trace shows the rewrite (for follow-ups), retrieval and
+  answer spans, but the input guardrail check does not appear as its own span, and the trace's
+  input field is empty.
 - **Grouped citations are not clickable.** When the model writes two citations in one bracket
   (`[a.py:1-5, b.py:9-12]`), they render as plain text instead of links.
 - **A re-index does not resume.** Restarting the app during indexing marks the run as interrupted;
