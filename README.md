@@ -12,16 +12,12 @@ repository, not only on my sample data. It is for developers onboarding onto an 
 
 ## Demo video
 
-[![CodeCompass demo video (4:55): click to play](docs/screenshots/video-thumbnail.png)](docs/videos/codecompass-demo.mp4)
+[![CodeCompass demo video (4:55): click to play](docs/screenshots/video-thumbnail.png)](https://drive.google.com/file/d/1n3T3b8rU6pva8Dl7vCGnu4GN_pIcLd2T/view?usp=sharing)
 
-▶ **[Watch the demo (4 min 55 s, MP4)](docs/videos/codecompass-demo.mp4)**: the running stack,
-cited answers and follow-ups on the indexed demo repository, guardrails declining off-topic
-questions, Langfuse traces, and the pgvector data in pgAdmin.
-
-<!-- VIDEO: GitHub only shows an inline player for videos uploaded through its editor. To get one,
-     edit this README on github.com, drag docs/videos/codecompass-demo.mp4 onto this section, and
-     replace the thumbnail link above with the https://github.com/user-attachments/assets/... URL
-     GitHub inserts (on its own line). -->
+▶ **[Watch the demo on Google Drive (4 min 55 s)](https://drive.google.com/file/d/1n3T3b8rU6pva8Dl7vCGnu4GN_pIcLd2T/view?usp=sharing)**: the running stack, cited answers and
+follow-ups on the indexed demo repository, guardrails declining off-topic questions, Langfuse
+traces, and the pgvector data in pgAdmin. A copy is in the repository at
+[`docs/videos/codecompass-demo.mp4`](docs/videos/codecompass-demo.mp4).
 
 ## Screenshots
 
