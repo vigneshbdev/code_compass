@@ -55,7 +55,7 @@ size checks happen in the job, and failures show up as `status: "failed"` with `
 deletes the codebase's Langfuse traces (best effort, logged). `409` while ingesting.
 
 ### `GET /api/codebases/{id}/overview`
-→ `200` `Overview` (see [data-model.md](../data-model.md#overview-json-on-ingestion)); `409` if not ready.
+→ `200` `Overview`: languages, dependencies, starter questions (see [data-model.md](../data-model.md#overview-json-on-ingestion)); `409` if not ready.
 
 ### `GET /api/codebases/{id}/files?path=<relpath>`
 → `200` `{"path", "language", "line_count", "content", "redaction_count"}`. Returns the
@@ -67,7 +67,8 @@ indexed file; no filesystem access (FR-002).
 {
   "id": "…", "name": "fastapi/full-stack-fastapi-template",
   "source_type": "github", "source_url": "…", "source_ref": null, "commit_sha": "abc123…",
-  "status": "queued|ingesting|ready|failed", "error": null, "reingest_required": false,
+  "status": "queued|ingesting|ready|failed", "error": null, "error_code": null,
+  "reingest_required": false,
   "progress": {"stage": "embedding", "files_done": 120, "files_total": 310,
                "chunks_done": 800, "chunks_total": 1900},
   "summary": {"indexed": 310, "skipped_by_reason": {"lockfile": 2, "binary": 14},
@@ -99,15 +100,14 @@ dimension than the current settings. Chat then returns `409 codebase_not_ready`.
 {
   "id": "…", "seq": 3, "role": "assistant", "status": "complete|error|declined|not_found|unverified",
   "content": "Users are created in [backend/app/crud.py:14-29] …",
-  "citations": [{"path": "backend/app/crud.py", "start_line": 14, "end_line": 29,
-                 "stale": false}],
-  "trace_id": "…", "feedback": 1,
+  "citations": [{"path": "backend/app/crud.py", "start_line": 14, "end_line": 29}],
+  "trace_id": "…", "trace_url": "http://localhost:3000/project/…/traces/…", "feedback": 1,
   "usage": {"tokens_in": 2310, "tokens_out": 180, "cost_usd": 0.0004,
             "latency_ms": {"first_token": 1450, "total": 3900}},
   "created_at": "…"
 }
 ```
-`stale` is computed on read by comparing `content_hash` with the current file (research R15).
+`trace_url` links the answer to its Langfuse trace (FR-040), and is null when tracing is off.
 
 ## Chat (FR-010…015, FR-030…033, FR-040)
 
@@ -131,7 +131,12 @@ holding the fixed message, then `done` with the matching status.
 
 ## Traces & feedback (FR-040, FR-041)
 
-### `GET /api/traces/{id}`
+### ~~`GET /api/traces/{id}`~~ *(cut in scope revision 2026-11-16)*
+
+Traces are viewed in Langfuse. Each assistant message carries `trace_url`. The section below is
+kept only for history.
+
+### `GET /api/traces/{id}` (not built)
 Served by the backend from the Langfuse public API and normalised into the FR-040 fields
 ([data-model.md](../data-model.md#trace-external-langfuse)):
 ```json

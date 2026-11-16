@@ -122,9 +122,11 @@ because self-hosted Langfuse needs it anyway.
      - `VectorRetriever`: top 20;
      - `LexicalRetriever`: top 20 full-text matches;
      - `SymbolRetriever`: exact, then case-insensitive, match on `symbol` / `symbol_leaf`.
-  3. **Fusion**: LangChain `EnsembleRetriever` (weighted Reciprocal Rank Fusion) over vector
-     and lexical. Symbol hits are pinned to the top by a small wrapper, which makes scenario
-     2.5 deterministic.
+  3. **Fusion**: Reciprocal Rank Fusion (k = 60) over vector and lexical, written in-house in
+     `retrieval/hybrid.py` (~20 lines). `EnsembleRetriever` moved to the legacy
+     `langchain-classic` package in LangChain 1.x, and our own version writes each chunk's
+     per-retriever rank and fused score into the trace (author decision 2026-11-16). Symbol hits
+     are pinned to the top, which makes scenario 2.5 deterministic.
   4. **Context packing**: overlapping spans in the same file are merged, then the result is
      cut to a budget (default 8 chunks / ~6k tokens, configurable).
 
@@ -211,10 +213,9 @@ because self-hosted Langfuse needs it anyway.
     Generations are linked to the prompt version, so changes can be compared in Langfuse.
   - **Feedback (FR-041)**: thumbs up/down are saved on the message (for the UI) and sent as a
     Langfuse score on the trace.
-  - **UI**: the "How this answer was made" drawer calls `GET /api/traces/{id}`, which the
-    backend serves from the Langfuse public API (normalised into the FR-040 field list). It
-    also offers an "Open in Langfuse" deep link. Langfuse ingests asynchronously, so the
-    drawer may lag a few seconds and shows "trace processing…" until data arrives.
+  - **UI**: each answer has an "Open in Langfuse" link to its trace. The in-app trace drawer
+    was cut in the scope revision of 2026-11-16, because Langfuse is the better trace UI and
+    showing it is the point.
   - **Fail-open**: if Langfuse is unreachable, chat still works; the SDK drops or buffers
     events, and the drawer shows "trace unavailable". The message keeps a usage summary
     (tokens, cost, first-token latency) so core numbers are never lost.
@@ -241,6 +242,8 @@ because self-hosted Langfuse needs it anyway.
     5. pushes all scores to Langfuse and writes `eval/reports/<dataset>-<ts>.{json,md}`.
 
     Runs can then be compared side by side in Langfuse.
+- **Packaging**: RAGAS lives in the `eval` dependency group and the `eval` compose service, not in
+  the app image (author decision 2026-11-16), keeping the app build within the setup budget.
 - **Alternatives**: a custom LLM judge only (rev. 1); RAGAS's names and definitions are the
   recognised industry metrics.
 
@@ -248,7 +251,7 @@ because self-hosted Langfuse needs it anyway.
 
 - **Decision**: LangChain (≥ 1.0) is the orchestration layer:
   - LCEL chain for rewrite → retrieve → pack → generate;
-  - `Document`, `BaseRetriever`, `EnsembleRetriever`;
+  - `Document` and `BaseRetriever` (fusion is our own code, see R6);
   - chat and embedding model interfaces (via `langchain-litellm`);
   - prompt templates;
   - the Langfuse callback.
@@ -284,14 +287,21 @@ Unchanged from rev. 1:
   `codebase.active_ingestion_id` and deletes the previous ingestion's rows. Startup recovery
   marks interrupted work `failed` and cleans up its rows. Each ingestion is also traced in
   Langfuse (embedding cost and duration).
+- **Uploads are kept** (added during US1) at `DATA_DIR/uploads/<codebase-id>.zip` on the app's
+  data volume, so a zip codebase can be re-ingested or retried. They are deleted with the
+  codebase.
+- **No LLM key, no ingestion** (NFR-007, added during US1): submit and re-ingest return
+  `503 llm_unavailable` while the startup LLM check is not `ok`. An embedding failure mid-run
+  fails the ingestion with the same code and a clear message.
 - **Alternatives**: Celery/RQ on the Redis that Langfuse brings. **Rejected**: that Redis
   belongs to Langfuse, and a worker fleet is not needed for single-user ingestion. Listed
   under productionisation (Cloud Tasks/SQS + workers).
 
 ## R15. Re-ingestion and stale citations
 
-Unchanged: re-ingest swaps atomically and conversations survive. Each citation stores a
-`content_hash`, and the viewer flags "code changed since this answer".
+Re-ingest swaps atomically and conversations survive; citations open the current file. Each
+citation stores a `content_hash`. Flagging "code changed since this answer" was cut in the scope
+revision of 2026-11-16 and is listed as future work; the stored hash means it needs no migration.
 
 ## R16. Startup checks (NFR-007)
 
@@ -302,11 +312,12 @@ Unchanged: re-ingest swaps atomically and conversations survive. Each citation s
 
 ## R17. Codebase overview (FR-020, FR-021)
 
-Unchanged:
-- languages, structure, entry points (heuristics);
-- dependencies (`pyproject.toml`, `requirements*.txt`, `package.json`);
-- API routes (tree-sitter queries for FastAPI/Flask decorators and Express calls);
+Trimmed in the scope revision of 2026-11-16:
+- language breakdown (files and lines per language);
+- dependencies (`pyproject.toml`, `requirements*.txt`, `package.json`), read from redacted content;
 - 3–5 starter questions from the fast model (traced in Langfuse), with a template fallback.
+
+Cut (future work): top-level structure, entry-point heuristics, API route detection.
 
 ## R18. Frontend
 

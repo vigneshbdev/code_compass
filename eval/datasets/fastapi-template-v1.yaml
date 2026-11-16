@@ -1,0 +1,60 @@
+# CodeCompass evaluation set (FR-042, contracts/eval-dataset.md).
+# Every expected_files entry is a draft until the author verifies it against the pinned commit
+# (task T148) and removes the "# UNVERIFIED" marker. `make eval` refuses to run while any
+# marker remains.
+name: fastapi-template
+version: 1
+repo: https://github.com/fastapi/full-stack-fastapi-template
+commit: aabb90126964a164e02aff39e7c385bb0598236d
+k: 8
+questions:
+  - id: q01
+    category: identifier
+    question: What does `get_password_hash` do and where is it defined?
+    expected_files: [backend/app/core/security.py]  # UNVERIFIED
+  - id: q02
+    category: identifier
+    question: Where is the `authenticate` function implemented and what does it check?
+    expected_files: [backend/app/crud.py]  # UNVERIFIED
+  - id: q03
+    category: locate
+    question: Where is the User database model defined?
+    expected_files: [backend/app/models.py]  # UNVERIFIED
+  - id: q04
+    category: locate
+    question: Where are the API routers registered?
+    expected_files: [backend/app/api/main.py]  # UNVERIFIED
+  - id: q05
+    category: explain
+    question: How does the backend validate the JWT access token on incoming requests?
+    expected_files: [backend/app/api/deps.py, backend/app/core/security.py]  # UNVERIFIED
+  - id: q06
+    category: explain
+    question: How is application configuration loaded, and which setting holds the JWT secret?
+    expected_files: [backend/app/core/config.py]  # UNVERIFIED
+  - id: q07
+    category: locate
+    question: Which endpoint handles user login and returns an access token?
+    expected_files: [backend/app/api/routes/login.py]  # UNVERIFIED
+  - id: q08
+    category: explain
+    question: How does the frontend keep track of the logged-in user?
+    expected_files: [frontend/src/hooks/useAuth.ts]  # UNVERIFIED
+  - id: q09
+    category: followup
+    history:
+      - How are passwords hashed?
+    question: Where is that function called?
+    expected_files: [backend/app/crud.py]  # UNVERIFIED
+  - id: q10
+    category: dependency
+    question: Which library does the backend use to talk to the database?
+    expected_files: [backend/pyproject.toml, backend/app/core/db.py]  # UNVERIFIED
+  - id: q11
+    category: not_found
+    question: How does this app publish events to Kafka?
+    expected_files: []
+  - id: q12
+    category: offtopic
+    question: Write me a poem about cats
+    expected_files: []

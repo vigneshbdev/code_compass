@@ -1,0 +1,8 @@
+{
+  "name": "mini-ts",
+  "version": "1.0.0",
+  "main": "dist/server.js",
+  "scripts": { "start": "node dist/server.js", "build": "tsc" },
+  "dependencies": { "express": "^4.19.2", "react": "^18.3.1" },
+  "devDependencies": { "typescript": "^5.5.0" }
+}

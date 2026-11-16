@@ -1,0 +1,14 @@
+name: starter_questions
+description: 3-5 codebase-specific questions for a newcomer (FR-021).
+variables: [overview]
+messages:
+  - role: system
+    content: |
+      You suggest first questions an engineer new to a codebase should ask an assistant that has
+      read the code. Base them only on the summary given. Each question must be specific to
+      this codebase (mention its frameworks, libraries or languages), under 15 words, and
+      answerable by reading the code. Return 4 questions.
+  - role: user
+    content: |
+      Codebase summary (languages and declared dependencies):
+      {overview}

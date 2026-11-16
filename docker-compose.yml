@@ -51,6 +51,9 @@ services:
       # Same keys Langfuse creates at headless init, so tracing works on first start.
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+      LANGFUSE_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID}
+      # Local embeddings (EMBEDDING_MODEL=ollama/...): LiteLLM reads this base URL.
+      OLLAMA_API_BASE: http://ollama:11434
     ports:
       - "8000:8000"
     volumes:
@@ -58,12 +61,56 @@ services:
     depends_on:
       # Langfuse is deliberately not a dependency: tracing fails open (research R10).
       postgres: { condition: service_healthy }
+      ollama: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 20s
+    restart: unless-stopped
+
+  eval:
+    # FR-042: `make eval` only. The profile keeps it out of `docker compose up` and `pull`.
+    profiles: ["eval"]
+    build:
+      context: .
+      args:
+        UV_GROUPS: "--group eval"
+    image: codecompass-eval:local
+    pull_policy: build
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@postgres:5432/codecompass
+      DATA_DIR: /data/tmp
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+      OLLAMA_API_BASE: http://ollama:11434
+    volumes:
+      - app_data:/data
+      - ./eval:/app/eval
+    depends_on:
+      postgres: { condition: service_healthy }
+      ollama: { condition: service_healthy }
+
+  ollama:
+    # Local embedding model, so ingestion does not spend the LLM provider's free-tier quota.
+    # nomic-embed-text outputs 768 dimensions, matching EMBEDDING_DIM. CPU only.
+    image: ollama/ollama:0.12.6
+    entrypoint: sh
+    # nomic-embed-512 = nomic-embed-text reading only the first 512 tokens of a chunk: ~3x faster on
+    # CPU (measured 15 s -> 4.5 s per 120-line chunk on a 4-core laptop). Full-text and symbol
+    # retrieval still cover the whole chunk.
+    command: -c 'ollama serve & sleep 3 && ollama pull nomic-embed-text && printf "FROM nomic-embed-text\nPARAMETER num_ctx 512\n" > /tmp/Modelfile && ollama create nomic-embed-512 -f /tmp/Modelfile && touch /tmp/ready && wait'
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/ready && ollama list >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
     restart: unless-stopped
 
   postgres:
@@ -181,3 +228,4 @@ volumes:
   clickhouse_logs:
   minio_data:
   redis_data:
+  ollama_data:

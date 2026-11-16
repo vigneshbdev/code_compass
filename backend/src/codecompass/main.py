@@ -15,9 +15,12 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from codecompass.api import health
+from codecompass.api import chat, codebases, conversations, health, messages
 from codecompass.api.errors import AppError, ErrorCode, install_error_handlers
+from codecompass.chat.service import ChatService
 from codecompass.config import Settings, get_settings
+from codecompass.guardrails.rails import Guardrails
+from codecompass.ingestion.pipeline import IngestionService
 from codecompass.llm.factory import LiteLLMModelFactory, ModelFactory
 from codecompass.observability.langfuse_client import LangfuseClient
 from codecompass.observability.logging import configure_logging
@@ -51,6 +54,20 @@ def create_app(
             )
         if await app.state.db.check() != "ok":
             logger.error("Database unreachable at startup")
+        app.state.ingestion = IngestionService(
+            app.state.db, app.state.models, settings, app.state.langfuse
+        )
+        if await app.state.db.check() == "ok":
+            await app.state.ingestion.recover_on_startup()
+        app.state.guardrails = Guardrails(app.state.models)
+        app.state.chat = ChatService(
+            app.state.db,
+            app.state.models,
+            settings,
+            app.state.langfuse,
+            app.state.prompts,
+            app.state.guardrails,
+        )
         langfuse_state = await app.state.langfuse.check()
         if langfuse_state == "unreachable":
             logger.warning("Langfuse unreachable at startup; chat works, traces will be missing")
@@ -58,6 +75,7 @@ def create_app(
         try:
             yield
         finally:
+            await app.state.ingestion.shutdown()
             app.state.langfuse.flush()
             await app.state.db.dispose()
 
@@ -71,6 +89,10 @@ def create_app(
 
     api = APIRouter(prefix="/api")
     api.include_router(health.router)
+    api.include_router(codebases.router)
+    api.include_router(conversations.router)
+    api.include_router(chat.router)
+    api.include_router(messages.router)
     app.include_router(api)
 
     _mount_spa(app, settings.static_dir)

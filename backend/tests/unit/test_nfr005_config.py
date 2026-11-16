@@ -76,6 +76,7 @@ def test_nfr005_secrets_are_not_printed(monkeypatch: pytest.MonkeyPatch) -> None
 
 MODEL_LITERAL = re.compile(r"gemini|gpt-|claude-|text-embedding", re.IGNORECASE)
 URL_LITERAL = re.compile(r"https?://")
+ALLOW = re.compile(r"# literal-ok:(.*)$")
 
 
 def test_nfr005_no_hardcoded_models_or_urls_outside_config() -> None:
@@ -84,8 +85,19 @@ def test_nfr005_no_hardcoded_models_or_urls_outside_config() -> None:
         if path.name == "config.py":
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-            if MODEL_LITERAL.search(line) or URL_LITERAL.search(line):
-                offenders.append(f"{path.relative_to(SRC)}:{lineno}: {line.strip()}")
+            if not (MODEL_LITERAL.search(line) or URL_LITERAL.search(line)):
+                continue
+            # Detection/validation patterns (not endpoints) may opt out with a stated reason.
+            marker = ALLOW.search(line)
+            if marker and marker.group(1).strip():
+                continue
+            offenders.append(f"{path.relative_to(SRC)}:{lineno}: {line.strip()}")
     assert not offenders, "hard-coded model IDs or URLs (CLAUDE.md, NFR-005):\n" + "\n".join(
         offenders
     )
+
+
+def test_nfr005_allow_marker_requires_a_reason() -> None:
+    assert ALLOW.search("x = 1  # literal-ok: validates user input").group(1).strip()  # type: ignore[union-attr]
+    marker = ALLOW.search("x = 1  # literal-ok:")
+    assert marker is not None and not marker.group(1).strip()  # empty reason does not count

@@ -7,6 +7,11 @@
 **Phase 0**: [research.md](research.md) · **Phase 1**: [data-model.md](data-model.md),
 [contracts/](contracts/), [quickstart.md](quickstart.md)
 
+**Rev. 3 scope revision (author-approved, 2026-11-16):** the remaining work was cut to 10 tasks
+(tasks.md T141–T150). Cut: the in-app trace panel (Langfuse is the trace UI, linked from each
+answer), route and entry-point detection, stale-citation flagging, deleting single conversations,
+and an eval set larger than 15 questions. Structure entries below marked *(cut)* are not built.
+
 **Rev. 2 (author direction, 2026-11-16):** build to an enterprise standard and use LangChain,
 NeMo Guardrails, Langfuse and LiteLLM wherever they fit. As a result, storage moves to
 Postgres + pgvector, which Langfuse requires anyway.
@@ -22,7 +27,7 @@ static overview, then chats with an assistant whose answers stream and cite exac
 - **Chunking**: tree-sitter, producing LangChain `Document`s.
 - **Storage**: Postgres + pgvector, with full-text search.
 - **Retrieval**: a LangChain LCEL pipeline with a history-aware rewrite and hybrid search
-  (vector + lexical + exact symbol, fused by `EnsembleRetriever`).
+  (vector + lexical + exact symbol, fused with our own Reciprocal Rank Fusion).
 - **Models**: LiteLLM, reached through LangChain interfaces.
 - **Guardrails**: NeMo Guardrails for input, retrieval and streaming output rails, plus
   `detect-secrets` redaction at ingestion.
@@ -84,7 +89,7 @@ Browser (React SPA) ──REST + SSE──► app (FastAPI, one process) ──�
         └─► overview/                                                                        │
    chat/ (LangChain LCEL):                                                                   │
      NeMo input rail ─► history-aware rewrite ─► Vector/Lexical/Symbol retrievers            │
-       ─► EnsembleRetriever (RRF) + symbol pin ─► pack ─► NeMo retrieval rail                │
+       ─► RRF fusion (own code) + symbol pin ─► pack ─► NeMo retrieval rail                │
        ─► answer (streaming) ─► NeMo output rail (secret mask) ─► citation validation        │
    storage/ (SQLAlchemy) ─────────────► postgres (pgvector, tsvector)                        │
    Langfuse CallbackHandler + SDK ────► langfuse-web ─► langfuse-worker ─► clickhouse/redis/minio
@@ -93,6 +98,7 @@ Browser (React SPA) ──REST + SSE──► app (FastAPI, one process) ──�
 
 **Compose services**:
 - `app`: port 8000;
+- `eval` (profile `eval`, not started by `up`): the app image plus RAGAS, used only by `make eval`;
 - `postgres`: pgvector image; creates the `codecompass` and `langfuse` databases;
 - `langfuse-web`: port 3000, created headless through the `LANGFUSE_INIT_*` env vars;
 - `langfuse-worker`, `clickhouse`, `redis`, `minio`.
@@ -127,22 +133,21 @@ backend/
 ├── src/codecompass/
 │   ├── main.py                   # app factory, routers, SPA mount, startup checks (NFR-007), recovery (R14), prompt sync
 │   ├── config.py                 # Settings (pydantic-settings), the only place env is read (NFR-005)
-│   ├── api/                      # codebases.py, conversations.py, chat.py (SSE), traces.py, messages.py, health.py, errors.py, schemas.py
+│   ├── api/                      # codebases.py, conversations.py, chat.py (SSE), messages.py (feedback), health.py, errors.py, schemas.py
 │   ├── storage/                  # db.py (async engine/session), models.py (SQLAlchemy), repositories/
 │   ├── ingestion/                # sources.py (GitHub tarball, zip; safe extract), filters.py, pipeline.py (stages, progress, atomic swap)
 │   ├── chunking/                 # treesitter_chunker.py, generic_chunker.py, identifiers.py, documents.py (→ LangChain Document)
-│   ├── retrieval/                # vector.py, lexical.py, symbol.py (BaseRetrievers), hybrid.py (EnsembleRetriever + symbol pin), packer.py, precheck.py
-│   ├── chat/                     # chain.py (LCEL), rewrite.py, history.py (DB ↔ BaseMessage), citations.py, streaming.py (SSE events)
+│   ├── retrieval/                # retrievers.py (vector, lexical, symbol BaseRetrievers), hybrid.py (RRF fusion, symbol pin, packing, not-found pre-check)
+│   ├── chat/                     # service.py (the request: rails → rewrite → retrieve → stream → citations → save → trace), rewrite.py, citations.py, context.py, events.py (SSE)
 │   ├── guardrails/
-│   │   ├── redaction.py          # detect-secrets detector + redact (FR-030; reused by output rail, FR-033)
-│   │   ├── injection.py          # heuristics (FR-031)
-│   │   ├── actions.py            # NeMo custom actions: retrieval rail, output secret mask
-│   │   ├── rails.py              # LLMRails setup with ModelFactory models; invoke input/retrieval/output rails
-│   │   └── config/               # NeMo config.yml, rails.co (Colang), prompts.yml (self-check input = topical policy)
+│   │   ├── redaction.py          # detect-secrets detector + redact (FR-030; reused by the output rail and the Langfuse export mask)
+│   │   ├── injection.py          # instruction-like text detection (FR-031)
+│   │   ├── rails.py              # NeMo LLMRails with ModelFactory models; input check, output masking action, streaming OutputFilter
+│   │   └── config/               # NeMo config.yml (self-check input = topical policy, output flow) and rails.co (mask secrets subflow)
 │   ├── prompts/                  # answer.yaml, rewrite.yaml, starter_questions.yaml (git source of truth → synced to Langfuse)
 │   ├── llm/                      # factory.py (ModelFactory, ChatLiteLLM, LiteLLM embeddings)
-│   ├── overview/                 # languages.py, structure.py, entrypoints.py, dependencies.py, routes.py, starters.py
-│   ├── observability/            # langfuse_client.py (handler, fail-open), prompt_sync.py, trace_reader.py (Langfuse → FR-040 view), logging.py
+│   ├── overview/                 # languages.py, dependencies.py, starters.py (structure/entry points/routes: *(cut)*)
+│   ├── observability/            # langfuse_client.py (run configs, scores, fail-open), prompt_sync.py, logging.py
 │   └── eval/                     # __main__.py (CLI), dataset.py (YAML ↔ Langfuse dataset), metrics.py (hit-rate, citations), ragas_eval.py, report.py
 └── tests/
     ├── unit/                     # named by requirement, e.g. test_fr015_symbol_pin.py, test_fr030_redaction.py, test_fr033_output_rail.py
@@ -153,7 +158,7 @@ frontend/
 ├── package.json, vite.config.ts, tailwind.config.ts, tsconfig.json
 └── src/
     ├── api/                      # client.ts (typed fetch), queries.ts (TanStack Query hooks), sse.ts (POST-SSE parser)
-    ├── components/               # Sidebar, IngestForm, IngestProgress, Overview, Chat, MessageView, CitationChip, CodeViewer, TraceDrawer, HealthBanner, FeedbackButtons
+    ├── components/               # Sidebar, IngestForm, IngestProgress, Overview, Chat, MessageView, CitationChip, CodeViewer, HealthBanner, FeedbackButtons (+ "Open in Langfuse" link)
     ├── hooks/                    # useChatStream, useTheme
     ├── App.tsx, main.tsx
     └── **/*.test.ts(x)           # Vitest, colocated
@@ -182,43 +187,29 @@ observability) has one folder a reviewer can open (SC-005).
 | FR-006, FR-007 | `storage/`, `api/codebases.py`, `retrieval/` | integration: two codebases isolated; delete cascades (and Langfuse delete called) |
 | NFR-002 | `chunking/` | unit: py/js/ts spans exact; oversize split; generic windows; chunk text == file lines |
 | FR-010, FR-011, FR-013 | `chat/chain.py`, `citations.py`, `streaming.py`, `retrieval/precheck.py` | unit: citation parse/validate; integration: SSE event order; not-found pre-check skips LLM |
-| FR-012 | `api/codebases.py` files endpoint, `CodeViewer` | integration: redacted content; vitest: highlight range |
+| FR-012 | files endpoint (T143), `CodeViewer` (T144) | integration: redacted content; vitest: highlight range |
 | FR-014, FR-016 | `chat/rewrite.py`, `history.py`, `api/conversations.py` | integration: follow-up uses history; persistence across app re-creation |
 | FR-015 | `retrieval/symbol.py`, `hybrid.py`, `chunking/identifiers.py` | unit: identifier query pins the defining chunk despite unrelated vector scores |
-| FR-020, FR-021 | `overview/` | unit: routes/deps/entry points on fixtures; starter fallback |
+| FR-020, FR-021 | `overview/` | unit: languages and dependencies on fixtures; starter fallback (T149) |
 | FR-030 | `guardrails/redaction.py`, `ingestion/pipeline.py` | unit: every fixture secret redacted, line numbers preserved |
 | FR-031 | `guardrails/injection.py`, `actions.py`, `config/` | unit: flagging; integration: retrieval rail marks chunk; live smoke: injected instruction not followed |
 | FR-032 | NeMo input rail (`config/prompts.yml`, `rails.py`) | integration (fake self-check model): off-topic → `declined`; live smoke on real model |
 | FR-033 | `guardrails/actions.py` output rail | unit: secret split across stream deltas masked; SC-004 integration sweep (prompt, answer, viewer, trace payload) |
 | FR-043 | `prompts/`, `observability/prompt_sync.py` | unit: prompt load + version hash; integration: trace links prompt version |
-| FR-040, FR-041 | `observability/`, `api/traces.py`, `api/messages.py` | integration: mock Langfuse receives spans with every FR-040 field; feedback stored + score sent; fail-open when Langfuse is down |
+| FR-040, FR-041 | `observability/`, `api/messages.py`, `trace_url` on messages | integration: `capture_tracer` sees spans with every FR-040 field; feedback stored + score sent; fail-open when Langfuse is down (T146) |
 | FR-042, SC-002, SC-003 | `eval/` | unit: metric maths, dataset validation; `make eval` (live) |
 | NFR-001 | `chat/`, `guardrails/rails.py` | `latency_ms` per step in trace; eval p50 |
 | NFR-003, NFR-005, NFR-007 | `Dockerfile`, compose, `config.py`, `main.py`, `HealthBanner` | integration: health states with fakes; manual compose run + timing |
 | NFR-006 | `frontend/` | vitest a11y roles; manual keyboard pass |
 
-## Build order (maps to `/speckit-tasks` phases)
+## Build order (maps to tasks.md, rev. 3)
 
-1. **Foundation**:
-   - repo skeleton, config, `ModelFactory` + fakes;
-   - SQLAlchemy models + Alembic;
-   - compose with Postgres + the Langfuse stack (headless init), `make init-env`;
-   - Langfuse client (fail-open) + prompt sync;
-   - health checks, Makefile, `make test lint`.
-2. **US-1 Ingest** (+ FR-030 redaction, so nothing is stored unredacted): sources, filters,
-   chunking, embeddings, atomic swap, progress, ingestion trace, UI ingest form, progress and
-   summary.
-3. **US-2 Chat**: retrievers + ensemble, rewrite, LCEL chain, streaming SSE, citations,
-   conversations, code viewer.
-4. **US-3 Guardrails**:
-   - **spike** on NeMo streaming output rails with `ChatLiteLLM` (fallback in R9);
-   - then input, retrieval and output rails;
-   - fixture sweep.
-5. **US-5 Overview**: extractors, starter questions, overview screen.
-6. **US-4 Observability & eval**: trace reader + drawer, feedback scores, eval dataset (author
-   verifies expected files), Langfuse dataset runs, RAGAS, `make eval`.
-7. **Polish**: dark mode, keyboard pass, edge-case messages, cold-start timing, README
-   skeleton (fact sections only; the author writes the opinion sections).
+1. **Foundation** and **US1 Ingest**: built (T001–T058, T138, T139).
+2. **US2 Chat** (T141–T144): hybrid retrieval, LCEL answer chain, chat API, chat UI.
+3. **US3 Guardrails** (T145): NeMo input rail, injection defence, output secret masking.
+4. **US4 Observability and eval** (T146–T148): Langfuse traces, link and feedback; RAGAS eval.
+5. **US5 Overview, trimmed** (T149): languages, dependencies, starter questions.
+6. **Finish** (T150): README fact sections and a real end-to-end run.
 
 Each story ends with `spec-reviewer` PASS → `python scripts/cross-review.py` → commit.
 
@@ -232,11 +223,11 @@ CLAUDE.md requires a reason for every dependency. Versions are pinned in `uv.loc
 | fastapi, uvicorn[standard], python-multipart | backend | HTTP API, typed schemas, SSE (FR-010), zip upload (FR-002) |
 | pydantic-settings | backend | all config from env, validated (NFR-005) |
 | sqlalchemy[asyncio], asyncpg or psycopg[binary], alembic, pgvector (python) | backend | typed persistence, versioned migrations, vector column (FR-007, FR-016, R5) |
-| langchain-core, langchain (≥ 1.0) | backend | LCEL chain, `Document`/`BaseRetriever`, `EnsembleRetriever` RRF, prompt templates (R6, R12) |
+| langchain-core, langchain (≥ 1.0) | backend | LCEL chain, `Document`/`BaseRetriever`, prompt templates (R6, R12). Fusion (RRF) is our own ~20 lines in `retrieval/hybrid.py`: `EnsembleRetriever` moved to the legacy `langchain-classic` package in LangChain 1.x (author decision 2026-11-16) |
 | langchain-litellm, litellm | backend | provider-agnostic chat + embeddings, retries, cost (VI, R3) |
 | nemoguardrails | backend | input/retrieval/output rails (FR-031, FR-032, FR-033, R9) |
 | langfuse | backend | traces, sessions, prompt versions, feedback scores, datasets (FR-040–042, R10) |
-| ragas | backend | standard faithfulness / context metrics in eval (FR-042, R11) |
+| ragas | backend, **`eval` dependency group only** | standard faithfulness / context metrics in eval (FR-042, R11). Kept out of the app image because it pulls pandas, pyarrow and scipy, which roughly double the image and the first build (author decision 2026-11-16). Installed in the `eval` compose service used by `make eval` |
 | tree-sitter, tree-sitter-python, tree-sitter-javascript, tree-sitter-typescript | backend | structure-aware chunking with exact lines (NFR-002, FR-011), route detection (FR-020) |
 | detect-secrets | backend | secret detection for redaction and output rail (FR-030, FR-033) |
 | pathspec | backend | correct `.gitignore` semantics (FR-003) |
@@ -253,6 +244,7 @@ CLAUDE.md requires a reason for every dependency. Versions are pinned in `uv.loc
 | types-pyyaml | backend dev | mypy --strict type stubs for pyyaml. Added during T002 |
 | `pgvector/pgvector:pg16` | compose | app DB + vectors + Langfuse metadata DB (R5) |
 | `langfuse/langfuse`, `langfuse/langfuse-worker`, `clickhouse/clickhouse-server`, `redis`, `minio/minio` | compose | Langfuse v4 self-hosted reference stack (R10) |
+| `ollama/ollama` (+ `nomic-embed-text` model) | compose | local embeddings (768-dim, matches `EMBEDDING_DIM`) so ingestion does not spend the Gemini free-tier quota, which ran out during the demo; reached through LiteLLM, so `EMBEDDING_MODEL` can still point at any provider (VI, NFR-004). CPU only, so it runs as `nomic-embed-512` (first 512 tokens of each chunk; measured 15 s -> 4.5 s per chunk on a 4-core laptop) with `EMBED_BATCH_SIZE=8`; full-text and symbol retrieval still cover whole chunks (author decision 2026-11-16) |
 
 ## Risks and mitigations
 
@@ -262,7 +254,7 @@ CLAUDE.md requires a reason for every dependency. Versions are pinned in `uv.loc
 | NeMo streaming output rails don't fit the LCEL/SSE flow | spike first in US-3; fallback = `RunnableRails` for input + own line-buffered filter calling the same action (R9) |
 | NeMo input rail adds latency against NFR-001 | fast model, short self-check prompt; `latency_ms.input_rails` tracked; eval reports p50 |
 | Library churn (LangChain 1.x, NeMo 0.x, RAGAS) | exact pins in `uv.lock`; LangChain kept out of domain modules; live smoke tests catch breakage |
-| Free-tier rate limits (embedding at ingestion, judge in eval) | batched embeds + LiteLLM backoff; configurable batch size; demo repo is small |
+| Free-tier rate limits (embedding at ingestion, judge in eval) | embeddings run locally on Ollama by default; batched embeds + LiteLLM backoff; configurable batch size; demo repo is small |
 | Poor retrieval on reviewer's repo | hybrid + symbol retrieval; trace drawer and Langfuse show why; eval hit-rate tracked; optional reranker by config |
 | Infra secrets leaked through `.env.example` | dev placeholders only; `make init-env` generates random values; `.env` git-ignored |
 

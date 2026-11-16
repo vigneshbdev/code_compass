@@ -308,6 +308,7 @@ wheels = [
 name = "codecompass"
 version = "0.1.0"
 source = { editable = "." }
+default-groups = ["dev", "eval"]
 dependencies = [
     { name = "alembic" },
     { name = "detect-secrets" },
@@ -325,7 +326,6 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "pyyaml" },
-    { name = "ragas" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tree-sitter" },
     { name = "tree-sitter-javascript" },
@@ -342,6 +342,9 @@ dev = [
     { name = "ruff" },
     { name = "testcontainers" },
     { name = "types-pyyaml" },
+]
+eval = [
+    { name = "ragas" },
 ]
 
 [package.metadata]
@@ -362,7 +365,6 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "pyyaml" },
-    { name = "ragas" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2" },
     { name = "tree-sitter" },
     { name = "tree-sitter-javascript" },
@@ -380,6 +382,7 @@ dev = [
     { name = "testcontainers", extras = ["postgres"] },
     { name = "types-pyyaml" },
 ]
+eval = [{ name = "ragas" }]
 
 [[package]]
 name = "colorama"

@@ -1,0 +1,5 @@
+# Output rail: mask secrets in the bot message (FR-033). The action is registered in rails.py
+# and reuses the same detect-secrets detector as ingestion redaction (FR-030).
+define subflow mask secrets
+  $masked = execute mask_secrets(text=$bot_message)
+  $bot_message = $masked

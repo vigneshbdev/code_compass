@@ -33,8 +33,8 @@ questions:
     expected_files: []              # expect status "declined" (FR-032)
 ```
 
-Rules: 15–25 questions; at least 2 each of `identifier`, `followup` and `not_found`; at
-least 1 `offtopic`. `expected_files` paths are validated against the pinned commit when the
+Rules: 10–15 questions (scope revision 2026-11-16); at least 2 `identifier`, and at least 1 each
+of `followup`, `not_found` and `offtopic`. `expected_files` paths are validated against the pinned commit when the
 dataset loads (a typo fails the run instead of skewing the score).
 
 ## Command
@@ -42,7 +42,8 @@ dataset loads (a typo fails the run instead of skewing the score).
 ```bash
 make eval                                   # default dataset
 make eval DATASET=eval/datasets/fastapi-template-v1.yaml
-# equivalent: docker compose run --rm app python -m codecompass.eval <dataset>
+# equivalent: docker compose --profile eval run --rm eval python -m codecompass.eval <dataset>
+# (the `eval` image is the app image plus RAGAS; it is never started by `docker compose up`)
 ```
 
 Needs a working LLM key and the compose stack (Postgres, Langfuse). It ingests the pinned
@@ -51,10 +52,17 @@ commit if that codebase isn't already ingested.
 ## Langfuse dataset
 
 The YAML file is the source of truth. Each run upserts its items into a Langfuse Dataset
-named `<name>-v<N>` (item ID = question `id`, expected output = `expected_files`, metadata =
-category and history). Every question runs as a **dataset run item** linked to its chat
-trace, with run name `<git short sha>-<UTC timestamp>`. All metric scores below are attached
-to those traces, so runs can be compared in the Langfuse UI.
+named `<name>-v<N>` (item ID `<name>-v<N>-<question id>`, expected output = `expected_files`,
+metadata = category). Each question's chat trace receives the scores `eval_retrieval_hit`,
+`eval_valid_citations` and `eval_faithfulness`, with the comment `eval run <UTC timestamp>`, so
+runs can be compared by filtering scores in the Langfuse UI.
+
+*As built (2026-11-16):* Langfuse SDK v5 replaced linked dataset runs with an experiment runner
+that owns tracing. Eval therefore runs the app's own chat pipeline, then records scores on its
+traces. Langfuse sync fails open; the local report is the source of truth.
+
+The dataset refuses to load while any `# UNVERIFIED` marker remains (author task T148).
+`--allow-unverified` permits a dry run, and the report name is then marked `-UNVERIFIED`.
 
 ## Report
 
@@ -66,12 +74,12 @@ and recorded in Langfuse as above.
 | `retrieval_hit_rate` | share of answerable questions where ≥ 1 expected file is in the packed context (custom) | ≥ 0.80 (SC-002) |
 | `citation_validity` | share of claim-making answers (status `complete` or `unverified`) that contain ≥ 1 valid citation, so every `unverified` answer counts as a miss (custom) | 1.00 (SC-003) |
 | `faithfulness` | RAGAS faithfulness (judge = `LLM_JUDGE_MODEL`) | reported; baseline tracked |
-| `context_precision`, `context_recall` | RAGAS ID-based context precision and recall (retrieved file paths compared with `expected_files`; no LLM) | reported |
+| `context_precision`, `context_recall` | file-level precision and recall of retrieved files against `expected_files`, computed in `eval/metrics.py` with no LLM (RAGAS's ID-based classes are private in RAGAS 0.4) | reported |
 | `not_found_accuracy` | share of `not_found` questions answered with status `not_found` | reported |
 | `offtopic_accuracy` | share of `offtopic` questions answered with status `declined` | reported |
-| `latency_first_token_p50_ms` | over all questions | ≤ 3000 (NFR-001) |
-| `cost_usd_total` | sum of trace costs, judge included | reported |
+| `latency_first_token_p50_ms` | over answerable questions only (declined and pre-check not-found answers skip the LLM) | ≤ 3000 (NFR-001) |
+| `errors` | questions whose answer failed | 0 |
 
-Per-question rows include the trace ID, so any miss can be opened in the UI's trace drawer.
-Exit code is `0` regardless of score (it is a report, not a gate). `--fail-under 0.8` makes
-it a gate for CI.
+Per-question rows include the trace ID, so any miss can be opened in Langfuse. Exit code is `0`
+regardless of score (it is a report, not a gate). `--fail-under 0.8` gates on retrieval hit-rate
+for CI. Exit code `2` means the run could not start (dataset error or no working LLM key).

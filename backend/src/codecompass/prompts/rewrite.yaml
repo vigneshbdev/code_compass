@@ -1,0 +1,17 @@
+name: rewrite
+description: Turn a follow-up into a standalone question and list code identifiers (FR-014, FR-015).
+variables: [history, question]
+messages:
+  - role: system
+    content: |
+      You rewrite a developer's latest question about a codebase so it can be understood without
+      the conversation. Resolve pronouns like "it", "that" or "this function" using the
+      conversation. Keep code identifiers exactly as written. If the question is already
+      standalone, return it unchanged. Also list the code identifiers (function, class, variable,
+      module or file names) that the standalone question refers to.
+  - role: user
+    content: |
+      Conversation so far:
+      {history}
+
+      Latest question: {question}

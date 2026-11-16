@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     max_archive_entries: int = 100_000
     max_uncompressed_bytes: int = 1_000_000_000
     embed_batch_size: int = 64
+    embed_tokens_per_minute: int = Field(default=0, ge=0)  # 0 = no pacing (NFR-004)
+    embed_rate_limit_retries: int = Field(default=5, ge=0)
     retrieval_top_k: int = 20
     context_max_chunks: int = 8
     context_max_tokens: int = 6000
@@ -49,6 +51,7 @@ class Settings(BaseSettings):
     langfuse_ui_url: str = "http://localhost:3000"
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None
+    langfuse_project_id: str | None = None  # builds "Open in Langfuse" links (FR-040)
 
 
 @lru_cache(maxsize=1)

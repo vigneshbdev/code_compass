@@ -49,6 +49,8 @@ class LiteLLMModelFactory:
             streaming=streaming,
             max_retries=MAX_RETRIES,
             temperature=0,
+            # Ask providers to report token usage on the final streamed chunk (FR-040).
+            model_kwargs={"stream_options": {"include_usage": True}} if streaming else {},
         )
 
     def embeddings(self) -> Embeddings:
@@ -80,3 +82,14 @@ class LiteLLMModelFactory:
             logger.exception("LLM check failed")
             return "unreachable"
         return "ok"
+
+
+def cost_usd(model: str, tokens_in: int, tokens_out: int) -> float:
+    """Estimated cost from LiteLLM's price table; 0.0 when the model is not priced."""
+    try:
+        prompt, completion = litellm.cost_per_token(
+            model=model, prompt_tokens=tokens_in, completion_tokens=tokens_out
+        )
+        return round(float(prompt) + float(completion), 6)
+    except Exception:
+        return 0.0

@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from codecompass.config import Settings
+from codecompass.llm.factory import CheckResult
 from codecompass.observability.langfuse_client import LangfuseClient, LangfuseState
 from tests.conftest import ClientFactory
 from tests.fakes.capture_tracer import CaptureTracer
@@ -36,7 +37,7 @@ async def test_nfr007_health_ok_shape(client: httpx.AsyncClient) -> None:
 @pytest.mark.parametrize("llm_state", ["missing", "invalid", "unreachable"])
 async def test_nfr007_app_starts_and_reports_bad_key(
     make_client: ClientFactory,
-    llm_state: str,
+    llm_state: CheckResult,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     async with make_client(model_factory=FakeModelFactory(check_result=llm_state)) as client:
@@ -78,7 +79,11 @@ async def test_capture_tracer_fixture_records_runs(capture_tracer: CaptureTracer
     from langchain_core.runnables import RunnableLambda
 
     config = capture_tracer.run_config("chat", session_id="conv-9", metadata={"k": "v"})
-    RunnableLambda(lambda x: x + 1).invoke(1, config=config)
+
+    def add_one(x: int) -> int:
+        return x + 1
+
+    RunnableLambda(add_one).invoke(1, config=config)
     assert config["metadata"]["langfuse_session_id"] == "conv-9"
     kinds = [e.kind for e in capture_tracer.handlers[0].events]
     assert kinds[:2] == ["chain_start", "chain_end"]

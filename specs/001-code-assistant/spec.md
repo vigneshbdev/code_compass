@@ -30,6 +30,15 @@ reviewer evaluating this assignment on a repo of their choice.
 - Q: Besides GitHub URL and .zip, should users point the app at a local folder? → A: No — GitHub URL and .zip only; local folders are zipped first.
 - Q: Which public repo is the demo and evaluation target? → A: `fastapi/full-stack-fastapi-template` (Python backend + React/TypeScript frontend).
 
+### Scope revision 2026-11-16 (author-approved)
+
+The remaining work was cut to the essentials that demonstrate the FDE role (solid RAG, enterprise
+tooling used for real, guardrails, observability, evaluation). Changes: the overview shows
+languages, dependencies and starter questions only (FR-020); traces are viewed in Langfuse via a
+link on each answer instead of an in-app panel (FR-040); conversations can be resumed and started
+but not individually deleted (FR-016); the eval set has 10–15 questions (FR-042); stale-citation
+flagging after re-ingest moves to Out of Scope.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Ingest a codebase (Priority: P1)
@@ -114,7 +123,7 @@ report.
 
 1. **Given** any chat request, **When** it completes, **Then** a trace records the query,
    rewritten query, retrieved chunks with scores, final prompt, model, tokens, cost,
-   per-step latency and guardrail decisions.
+   per-step latency and guardrail decisions, and the answer links to that trace in Langfuse.
 2. **Given** an answer, **When** the user clicks thumbs up/down, **Then** the feedback is
    attached to that trace.
 3. **Given** the versioned evaluation set, **When** the eval command runs, **Then** it reports
@@ -129,14 +138,13 @@ As a user, I want an instant overview so I know what to ask.
 **Why this priority**: it is the first screen a reviewer sees after ingestion and the clearest
 answer to the brief's "UI/UX and product innovation" criterion.
 
-**Independent Test**: ingest a repo with a known web framework; the overview lists its routes
-and manifest dependencies.
+**Independent Test**: ingest a repo with known manifests; the overview lists its languages and
+manifest dependencies and offers starter questions.
 
 **Acceptance Scenarios**:
 
-1. **Given** a finished ingestion, **When** the overview opens, **Then** it shows language
-   breakdown, top-level structure, likely entry points, declared dependencies and detected
-   API routes.
+1. **Given** a finished ingestion, **When** the overview opens, **Then** it shows the language
+   breakdown and declared dependencies.
 2. **Given** the overview, **When** displayed, **Then** it offers 3–5 starter questions
    specific to this codebase; clicking one asks it.
 
@@ -153,8 +161,7 @@ and manifest dependencies.
 - The LLM API key is missing or invalid at startup (see NFR-007).
 - A question asked while ingestion is still running.
 - App restarts mid-ingestion: the codebase is marked failed (not left half-indexed) and can be retried.
-- A codebase is re-ingested: existing conversations stay, but old citations may point at lines
-  that changed — citations open the current file, and a stale citation is flagged.
+- A codebase is re-ingested: existing conversations stay; citations open the current file.
 - Two identifiers with the same name in different files.
 
 ## Requirements *(mandatory)*
@@ -181,8 +188,8 @@ and manifest dependencies.
 - **FR-014**: Follow-up questions MUST use conversation context.
 - **FR-015**: Exact-identifier queries MUST retrieve the defining chunk even when semantic similarity is weak.
 - **FR-016**: Conversations (messages, citations, feedback, trace IDs) MUST persist on the server
-  across restarts. The user can list a codebase's past conversations, resume one, start a new
-  one, and delete one.
+  across restarts. The user can list a codebase's past conversations, resume one and start a new
+  one (conversations are deleted with their codebase).
 
 **Guardrails (US-3)**
 - **FR-030**: Secrets MUST be redacted at ingestion: never embedded, sent to the LLM or displayed.
@@ -191,16 +198,17 @@ and manifest dependencies.
 - **FR-033**: Output MUST be checked so secrets never leak even if ingestion redaction missed them.
 
 **Observability & quality (US-4)**
-- **FR-040**: Each chat request MUST produce a trace with the fields in US-4 scenario 1.
+- **FR-040**: Each chat request MUST produce a trace with the fields in US-4 scenario 1, viewable
+  in Langfuse through a link on the answer.
 - **FR-041**: Users MUST be able to give thumbs up/down feedback, attached to the trace.
 - **FR-042**: A versioned evaluation set MUST run from one command and report retrieval
   hit-rate and answer faithfulness. The set targets `fastapi/full-stack-fastapi-template` at a
-  pinned commit, with author-verified expected source files per question.
+  pinned commit, with 10–15 questions and author-verified expected source files per question.
 - **FR-043**: Prompts MUST be versioned in git, and each trace MUST record the prompt version
   used. *(Added 2026-11-16 with author approval: resolves analysis finding C2.)*
 
 **Overview (US-5)**
-- **FR-020**: System MUST show languages, structure, entry points, dependencies and API routes.
+- **FR-020**: System MUST show the language breakdown and declared dependencies.
 - **FR-021**: System MUST offer 3–5 codebase-specific starter questions.
 
 ### Non-Functional Requirements
@@ -225,7 +233,7 @@ and manifest dependencies.
   has a title (from the first question), created/updated timestamps. Deleted with its codebase.
 - **Message**: user question or assistant answer; answers carry citations and a trace ID.
 - **Citation**: reference from an answer to a chunk (`path:start-end`).
-- **Trace**: the observability record of one request; feedback attaches here.
+- **Trace**: the observability record of one request, stored in Langfuse; feedback attaches here.
 
 ## Success Criteria *(mandatory)*
 
@@ -257,6 +265,9 @@ and manifest dependencies.
 - Call-graph / dependency-graph visualisation.
 - Writing or modifying code (read-only Q&A).
 - Ingesting from a local folder path or browser folder drag-and-drop (zip it instead).
+- *(Scope revision 2026-11-16)* API route and entry-point detection in the overview; an in-app
+  trace panel (Langfuse is the trace UI); flagging stale citations after re-ingest; deleting
+  individual conversations; an eval set larger than 15 questions.
 
 ## Open Questions for the Author
 

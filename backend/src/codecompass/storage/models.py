@@ -41,7 +41,7 @@ INGESTION_STATUS = ("running", "complete", "failed")
 INGESTION_STAGE = ("downloading", "filtering", "chunking", "embedding", "overview", "finalizing")
 CHUNK_KIND = ("function", "class", "method", "module", "section", "window")
 MESSAGE_ROLE = ("user", "assistant")
-MESSAGE_STATUS = ("complete", "error", "declined", "not_found")
+MESSAGE_STATUS = ("complete", "error", "declined", "not_found", "unverified")  # C4
 SKIP_REASONS = (
     "gitignored",
     "denylisted_dir",
@@ -97,6 +97,7 @@ class Codebase(Base):
         ),
     )
     error: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)  # contracts/http-api.md error code
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -127,6 +128,10 @@ class Ingestion(Base):
     summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     overview: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     langfuse_trace_id: Mapped[str | None] = mapped_column(Text)
+    # Analysis U1: the model that produced this ingestion's vectors. A mismatch with current
+    # settings means the codebase must be re-ingested before chat (no mixed vector spaces).
+    embedding_model: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_dim: Mapped[int] = mapped_column(Integer, nullable=False)
     started_at: Mapped[datetime] = _created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

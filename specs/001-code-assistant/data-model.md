@@ -30,6 +30,7 @@ Codebase 1 ──< Ingestion 1 ──< File 1 ──< Chunk (embedding vector, s
 | status | text (enum) | `queued` \| `ingesting` \| `ready` \| `failed` |
 | active_ingestion_id | uuid? FK → Ingestion, `ON DELETE SET NULL` | null until the first success. One of two FKs that do not cascade (the other is `citation.chunk_id`): deleting an ingestion must not delete its codebase |
 | error | text? | user-facing failure message |
+| error_code | text? | machine-readable code from contracts/http-api.md (e.g. `repo_too_large`) |
 | created_at, updated_at | timestamptz | |
 
 **Validation**: `source_url` must match `https://github.com/<owner>/<repo>[/tree/<ref>]`
@@ -116,16 +117,14 @@ so a citation always opens the cited code.
 ```json
 {
   "languages": [{"language": "python", "files": 120, "lines": 9800}],
-  "structure": [{"path": "backend", "files": 140, "children": [{"path": "backend/app", "files": 98}]}],
-  "entry_points": [{"path": "backend/app/main.py", "line": 12, "reason": "FastAPI app instance"}],
   "dependencies": [{"manifest": "backend/pyproject.toml", "ecosystem": "pypi", "name": "fastapi", "spec": ">=0.114", "dev": false}],
-  "routes": [{"method": "GET", "path": "/api/v1/users/{id}", "handler": "read_user", "file": "backend/app/api/routes/users.py", "line": 88, "framework": "fastapi"}],
   "starter_questions": ["How is authentication implemented?", "..."],
   "starter_source": "llm"
 }
 ```
 
-`starter_questions`: 3–5 items (FR-021). `starter_source`: `llm` or `template`.
+`starter_questions`: 3–5 items (FR-021). `starter_source`: `llm` or `template`. Structure, entry
+points and routes were cut in the scope revision of 2026-11-16.
 
 ## Conversation
 
@@ -161,7 +160,7 @@ so a citation always opens the cited code.
 | path | text | |
 | start_line, end_line | int | |
 | chunk_id | bigint? | chunk it was validated against (null after re-ingest cleanup) |
-| content_hash | text | sha256 of the cited lines at answer time (stale detection, R15) |
+| content_hash | text | sha256 of the cited lines at answer time (kept so stale-citation flagging, now future work, needs no migration) |
 | ordinal | int | order in the answer |
 
 Only **valid** citations are stored. Invalid ones are counted in the trace (score

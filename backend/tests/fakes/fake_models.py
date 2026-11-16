@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
@@ -22,6 +23,8 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 from pydantic import BaseModel, ConfigDict, Field
+
+from codecompass.llm.factory import ChatRole, CheckResult
 
 DEFAULT_REPLY = "OK"
 TOKEN = re.compile(r"\S+\s*|\s+")
@@ -38,6 +41,7 @@ class FakeChatModel(BaseChatModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     role: str = "answer"
+    default_reply: str = DEFAULT_REPLY
     script: deque[Any] = Field(default_factory=deque)
     prompts: list[list[BaseMessage]] = Field(default_factory=list)
     fail_after_tokens: int | None = None  # raise ScriptedStreamError after N streamed tokens
@@ -47,7 +51,7 @@ class FakeChatModel(BaseChatModel):
         return "fake-scripted"
 
     def _next(self) -> Any:
-        return self.script.popleft() if self.script else DEFAULT_REPLY
+        return self.script.popleft() if self.script else self.default_reply
 
     def _generate(
         self,
@@ -102,6 +106,7 @@ class HashEmbeddings(Embeddings):
     def __init__(self, dim: int) -> None:
         self.dim = dim
         self.calls = 0
+        self.gate: asyncio.Event | None = None  # when set, aembed_documents waits for it
 
     def _vector(self, text: str) -> list[float]:
         vec = [0.0] * self.dim
@@ -121,6 +126,14 @@ class HashEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         return self._vector(text)
 
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        if self.gate is not None:
+            await self.gate.wait()
+        return self.embed_documents(texts)
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return self._vector(text)
+
 
 class FakeModelFactory:
     """Implements the ModelFactory protocol for tests."""
@@ -129,26 +142,31 @@ class FakeModelFactory:
         self,
         *,
         dim: int = 768,
-        check_result: str = "ok",
+        check_result: CheckResult = "ok",
         scripts: dict[str, list[Any]] | None = None,
     ) -> None:
         self.check_result = check_result
         self.embedder = HashEmbeddings(dim)
+        # The fast model answers NeMo's "should this be blocked?" check: default "No" (allow).
         self.models: dict[str, FakeChatModel] = {
-            role: FakeChatModel(role=role, script=deque((scripts or {}).get(role, [])))
+            role: FakeChatModel(
+                role=role,
+                script=deque((scripts or {}).get(role, [])),
+                default_reply="No" if role == "fast" else DEFAULT_REPLY,
+            )
             for role in ("answer", "fast", "judge")
         }
 
     def script(self, role: str, *replies: Any) -> None:
         self.models[role].script.extend(replies)
 
-    def chat(self, role: str, *, streaming: bool = False) -> FakeChatModel:
+    def chat(self, role: ChatRole, *, streaming: bool = False) -> FakeChatModel:
         return self.models[role]
 
     def embeddings(self) -> HashEmbeddings:
         return self.embedder
 
-    async def check(self) -> str:
+    async def check(self) -> CheckResult:
         return self.check_result
 
     def prompts(self, role: str) -> list[list[BaseMessage]]:

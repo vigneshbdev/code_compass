@@ -34,4 +34,4 @@ migrate:
 	cd backend && uv run alembic upgrade head
 
 eval:                ## FR-042: needs a working LLM key and the compose stack
-	docker compose run --rm app python -m codecompass.eval $(DATASET)
+	docker compose --profile eval run --rm eval python -m codecompass.eval $(DATASET)
